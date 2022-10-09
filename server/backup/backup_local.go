@@ -44,14 +44,7 @@ func LocateLocal(client remote.Client, uuid string) (*LocalBackup, *b2.Attrs, er
 		return nil, nil, errors.Wrap(err, "backup: could not list buckets jj")
 	}
 	bucket := buckets[0]
-	//get the folder name of basepath
-	// var folderName string
-	// for i := len(b.Path()) - 1; i >= 0; i-- {
-	// 	if b.Path()[i] == '/' {
-	// 		folderName = b.Path()[i+1:]
-	// 		break
-	// 	}
-	// }
+
 	destination := b.Backup.Uuid + ".tar.gz"
 	b.log().Info("destination is " + destination)
 	obj := bucket.Object(destination)

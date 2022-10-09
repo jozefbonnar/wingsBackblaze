@@ -2,7 +2,6 @@ package router
 
 import (
 	"net/http"
-	"os"
 	"strings"
 
 	"emperror.dev/errors"
@@ -179,19 +178,16 @@ func deleteServerBackup(c *gin.Context) {
 	b, _, err := backup.LocateLocal(middleware.ExtractApiClient(c), c.Param("backup"))
 	if err != nil {
 		// Just return from the function at this point if the backup was not located.
-		if errors.Is(err, os.ErrNotExist) {
-			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{
-				"error": "The requested backup was not found on this server.",
-			})
-			return
-		}
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{
+			"error": "The requested backup was not found on this server.",
+		})
 		middleware.CaptureAndAbort(c, err)
 		return
 	}
 	// I'm not entirely sure how likely this is to happen, however if we did manage to
 	// locate the backup previously and it is now missing when we go to delete, just
 	// treat it as having been successful, rather than returning a 404.
-	if err := b.Remove(); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := b.Remove(); err != nil {
 		middleware.CaptureAndAbort(c, err)
 		return
 	}
