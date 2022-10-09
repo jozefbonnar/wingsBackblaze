@@ -6,8 +6,8 @@ import (
 	"os"
 
 	"emperror.dev/errors"
+	"github.com/kurin/blazer/b2"
 	"github.com/mholt/archiver/v3"
-
 	"github.com/pterodactyl/wings/remote"
 	"github.com/pterodactyl/wings/server/filesystem"
 )
@@ -47,7 +47,31 @@ func LocateLocal(client remote.Client, uuid string) (*LocalBackup, os.FileInfo, 
 
 // Remove removes a backup from the system.
 func (b *LocalBackup) Remove() error {
-	return os.Remove(b.Path())
+	b.log().WithField("path", b.Path()).Info("removing backup from system")
+	ctx := context.Background()
+
+	id := "0025c9ed51475b20000000007"
+	key := "K002EEdpk2mHVRjpqh1g5xPpAirilAQ"
+	b2, err := b2.NewClient(ctx, id, key)
+	buckets, err := b2.ListBuckets(ctx)
+	if err != nil {
+		return errors.Wrap(err, "backup: could not list buckets jj")
+	}
+	bucket := buckets[0]
+	//get the folder name of basepath
+	// var folderName string
+	// for i := len(b.Path()) - 1; i >= 0; i-- {
+	// 	if b.Path()[i] == '/' {
+	// 		folderName = b.Path()[i+1:]
+	// 		break
+	// 	}
+	// }
+	destination := b.Backup.Uuid + ".tar.gz"
+	b.log().Info("destination is " + destination)
+	obj := bucket.Object(destination)
+	obj.Delete(ctx)
+
+	return nil
 }
 
 // WithLogContext attaches additional context to the log output for this backup.
@@ -58,6 +82,15 @@ func (b *LocalBackup) WithLogContext(c map[string]interface{}) {
 // Generate generates a backup of the selected files and pushes it to the
 // defined location for this instance.
 func (b *LocalBackup) Generate(ctx context.Context, basePath, ignore string) (*ArchiveDetails, error) {
+	defer os.Remove(b.Path())
+	id := ""
+	key := ""
+	b2, err := b2.NewClient(ctx, id, key)
+	buckets, err := b2.ListBuckets(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "backup: could not list buckets jj")
+	}
+	bucket := buckets[0]
 	a := &filesystem.Archive{
 		BasePath: basePath,
 		Ignore:   ignore,
@@ -68,12 +101,46 @@ func (b *LocalBackup) Generate(ctx context.Context, basePath, ignore string) (*A
 		return nil, err
 	}
 	b.log().Info("created backup successfully")
+	// Upload the file to the bucket.
+	b.log().Info("basepath is " + basePath)
+	//get the folder name of basepath
+	// var folderName string
+	// for i := len(basePath) - 1; i >= 0; i-- {
+	// 	if basePath[i] == '/' {
+	// 		folderName = basePath[i+1:]
+	// 		break
+	// 	}
+	// }
 
+	destination := b.Backup.Uuid + ".tar.gz"
+
+	if err := b.copyFile(ctx, bucket, b.Path(), destination); err != nil {
+		return nil, errors.Wrap(err, "backup: could not upload archive to s3 JJ")
+	}
+	b.log().Info("uploaded backup successfully")
 	ad, err := b.Details(ctx, nil)
 	if err != nil {
 		return nil, errors.WrapIf(err, "backup: failed to get archive details for local backup")
 	}
 	return ad, nil
+}
+
+func (b *LocalBackup) copyFile(ctx context.Context, bucket *b2.Bucket, src, dst string) error {
+	b.log().Info("starting JJ backup")
+
+	f, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	obj := bucket.Object(dst)
+	w := obj.NewWriter(ctx)
+	if _, err := io.Copy(w, f); err != nil {
+		w.Close()
+		return err
+	}
+	return w.Close()
 }
 
 // Restore will walk over the archive and call the callback function for each
