@@ -52,9 +52,8 @@ func getDownloadBackup(c *gin.Context) {
 		return
 	}
 	defer f.Close()
-
-	c.Header("Content-Length", strconv.Itoa(int(st.Size())))
-	c.Header("Content-Disposition", "attachment; filename="+strconv.Quote(st.Name()))
+	c.Header("Content-Length", strconv.Itoa(int(st.Size)))
+	c.Header("Content-Disposition", "attachment; filename="+strconv.Quote(st.Name))
 	c.Header("Content-Type", "application/octet-stream")
 
 	bufio.NewReader(f).WriteTo(c.Writer)

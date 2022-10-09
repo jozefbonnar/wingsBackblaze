@@ -223,6 +223,8 @@ type Backups struct {
 	// Defaults to 0 (unlimited)
 	WriteLimit int `default:"0" yaml:"write_limit"`
 
+	Backblazeid  string `default:"" yaml:"backblazeid"`
+	Backblazekey string `default:"" yaml:"backblazekey"`
 	// CompressionLevel determines how much backups created by wings should be compressed.
 	//
 	// "none" -> no compression will be applied

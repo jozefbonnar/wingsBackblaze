@@ -8,6 +8,7 @@ import (
 	"emperror.dev/errors"
 	"github.com/kurin/blazer/b2"
 	"github.com/mholt/archiver/v3"
+	"github.com/pterodactyl/wings/config"
 	"github.com/pterodactyl/wings/remote"
 	"github.com/pterodactyl/wings/server/filesystem"
 )
@@ -31,27 +32,46 @@ func NewLocal(client remote.Client, uuid string, ignore string) *LocalBackup {
 
 // LocateLocal finds the backup for a server and returns the local path. This
 // will obviously only work if the backup was created as a local backup.
-func LocateLocal(client remote.Client, uuid string) (*LocalBackup, os.FileInfo, error) {
+func LocateLocal(client remote.Client, uuid string) (*LocalBackup, *b2.Attrs, error) {
 	b := NewLocal(client, uuid, "")
-	st, err := os.Stat(b.Path())
+	// Check if the backup exists on b2.
+	id := config.Get().System.Backups.Backblazeid
+	key := config.Get().System.Backups.Backblazekey
+	ctx := context.Background()
+	b2, err := b2.NewClient(ctx, id, key)
+	buckets, err := b2.ListBuckets(ctx)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "backup: could not list buckets jj")
+	}
+	bucket := buckets[0]
+	//get the folder name of basepath
+	// var folderName string
+	// for i := len(b.Path()) - 1; i >= 0; i-- {
+	// 	if b.Path()[i] == '/' {
+	// 		folderName = b.Path()[i+1:]
+	// 		break
+	// 	}
+	// }
+	destination := b.Backup.Uuid + ".tar.gz"
+	b.log().Info("destination is " + destination)
+	obj := bucket.Object(destination)
+	attrs, err := obj.Attrs(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	if st.IsDir() {
-		return nil, nil, errors.New("invalid archive, is directory")
+	if attrs == nil {
+		return nil, nil, os.ErrNotExist
 	}
 
-	return b, st, nil
+	return b, attrs, nil
 }
 
 // Remove removes a backup from the system.
 func (b *LocalBackup) Remove() error {
 	b.log().WithField("path", b.Path()).Info("removing backup from system")
 	ctx := context.Background()
-
-	id := "0025c9ed51475b20000000007"
-	key := "K002EEdpk2mHVRjpqh1g5xPpAirilAQ"
+	id := config.Get().System.Backups.Backblazeid
+	key := config.Get().System.Backups.Backblazekey
 	b2, err := b2.NewClient(ctx, id, key)
 	buckets, err := b2.ListBuckets(ctx)
 	if err != nil {
@@ -83,8 +103,8 @@ func (b *LocalBackup) WithLogContext(c map[string]interface{}) {
 // defined location for this instance.
 func (b *LocalBackup) Generate(ctx context.Context, basePath, ignore string) (*ArchiveDetails, error) {
 	defer os.Remove(b.Path())
-	id := ""
-	key := ""
+	id := config.Get().System.Backups.Backblazeid
+	key := config.Get().System.Backups.Backblazekey
 	b2, err := b2.NewClient(ctx, id, key)
 	buckets, err := b2.ListBuckets(ctx)
 	if err != nil {
@@ -102,7 +122,7 @@ func (b *LocalBackup) Generate(ctx context.Context, basePath, ignore string) (*A
 	}
 	b.log().Info("created backup successfully")
 	// Upload the file to the bucket.
-	b.log().Info("basepath is " + basePath)
+
 	//get the folder name of basepath
 	// var folderName string
 	// for i := len(basePath) - 1; i >= 0; i-- {
@@ -113,7 +133,7 @@ func (b *LocalBackup) Generate(ctx context.Context, basePath, ignore string) (*A
 	// }
 
 	destination := b.Backup.Uuid + ".tar.gz"
-
+	b.log().Info("destination is " + destination)
 	if err := b.copyFile(ctx, bucket, b.Path(), destination); err != nil {
 		return nil, errors.Wrap(err, "backup: could not upload archive to s3 JJ")
 	}
